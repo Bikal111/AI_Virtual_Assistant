@@ -7,6 +7,8 @@ import time
 import psutil
 from gemini_engine import ask_gemini 
 from tools import play_music, open_site, get_weather, get_system_stats, battery_alert, take_screenshot, set_brightness, set_volume 
+from vision_engine import vision # Simple and clean!
+from face_engine import face_recognizer
 
 # --- STEP 1: DEFINE THE ENGINE HELPER ---
 def get_engine():
@@ -55,48 +57,67 @@ def takeCommand():
 
 # --- STEP 4: THE MAIN LOOP ---
 if __name__ == "__main__":
-    wishMe()
-    last_plugged_state = psutil.sensors_battery().power_plugged # Remember current state
+    # --- STEP 1: AUTHENTICATION ---
+    print("System: Initializing Face Recognition...")
+    # This now uses the 3-second scanning loop we discussed
+    user = face_recognizer.recognize_user()
+    
+    if user != "Unknown" and user != "None":
+        # Authentication Success
+        wishMe() 
+        speak(f"Authentication successful. Welcome back, Master {user.capitalize()}.")
+        print(f"Access Granted: {user}")
+    else:
+        # Authentication Failed
+        speak("Biometric scan failed. Access restricted to guest mode.")
+        wishMe() # Jarvis greets as Guest or uses the generic greeting
+        print("Access Level: Guest")
 
+    # --- STEP 2: SYSTEM MONITORING SETUP ---
+    last_plugged_state = psutil.sensors_battery().power_plugged 
+
+    # --- STEP 3: MAIN COMMAND LOOP ---
     while True:
-        # Check if charger state changed
+        # A. Charger Monitoring
         current_plugged_state = psutil.sensors_battery().power_plugged
         if last_plugged_state == True and current_plugged_state == False:
             speak("Sir, the charger has been disconnected.")
         elif last_plugged_state == False and current_plugged_state == True:
             speak("Charging started. Thank you, Sir.")
-            
         last_plugged_state = current_plugged_state
-        query = takeCommand()
+        
+        # B. Battery Health Alert
         alert = battery_alert()
         if alert:
             speak(alert)
 
+        # C. Listen for Command
+        query = takeCommand()
+
         if query == "none":
             continue
 
-        # --- USING THE TOOLS FILE ---
+        # --- D. COMMAND PROCESSING ---
+        
+        # 1. Multimedia & Entertainment
         if 'play' in query:
             response = play_music(query)
             speak(response)
 
         elif 'open' in query:
-            # If the user says "open youtube", we send "youtube" to our tool
             site = query.replace("open", "").strip()
             response = open_site(site)
             speak(response)
 
+        # 2. Information & Utilities
         elif 'the time' in query:
             strTime = datetime.datetime.now().strftime("%I:%M %p")
             speak(f"Sir, the time is {strTime}")
         
         elif 'weather' in query:
-            # We assume the user says "weather in Kathmandu"
-            # We split the string to get the city name
             city = query.split("in")[-1].strip()
-            if city == "weather": # If user just says "weather" without a city
-                city = "Lalitpur" # Set your default city
-            
+            if city == "weather": 
+                city = "Lalitpur" 
             report = get_weather(city)
             speak(report)
         
@@ -104,30 +125,38 @@ if __name__ == "__main__":
             stats, percent, plugged = get_system_stats()
             speak(stats)
         
+        # 3. Hardware Control
         elif 'screenshot' in query:
             speak("Taking a screenshot")
-            time.sleep(0) # Gives you time to switch windows
             report = take_screenshot()
             speak(report)
+
         elif 'brightness' in query:
             level = "".join(filter(str.isdigit, query))
             if level:
                 speak(set_brightness(level))
             else:
                 speak("Sir, what level of brightness should I set?")
+
         elif 'volume' in query:
-            # We pass the WHOLE query so the function can look for "up" or "100"
             report = set_volume(query)
             speak(report)
         
-
+        # 4. Vision Engine (The Eyes)
+        elif 'what do you see' in query or 'look at this' in query:
+            speak("Scanning the area, Sir...")
+            # Using prompt to Gemini
+            # Ensure vision_engine.py is using 'gemini-1.5-flash' to avoid quota error
+            description = vision.analyze_scene("Describe the objects and person clearly.")
+            speak(description)
+        
+        # 5. Exit Jarvis
         elif 'exit' in query or 'stop' in query:
             speak("Goodbye Bikal!")
             break
 
-        # --- GEMINI BRAIN ---
+        # 6. Gemini Intelligence (Brain)
         else:
-            speak("Let me think...")
+            speak("Searching my database...")
             reply = ask_gemini(query)
             speak(reply)
-        
